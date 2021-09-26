@@ -1,0 +1,4 @@
+github.com/japm/goScript v0.0.0-20170421184750-caab90145b05 h1:LAeYF12Bx9uB+ySgmi8tSjVVcvj0t1VbO1NGlRCHPAk=
+github.com/japm/goScript v0.0.0-20170421184750-caab90145b05/go.mod h1:7MVc+qQXRKYCMfWIubyUh+cXGlRuc/Lr/Ys+MrhUt68=
+github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
