@@ -1,0 +1,26 @@
+# We are going to make 2 POST requests to increment the value "a" 1000 times on the EvalCache in parallel
+# If we get the value "a" from the EvalCache, it should equal 1000 for both /evaluate calls
+# If the 2 calls share the same EvalCache (and thus is not multitenant), then there will be
+# race conditions/interleaving on the value "a"
+# We expect both EvalCaches to be independent of one another, thus "a" should be incremented independently on
+# each respective EvalCache
+
+# Set the json bodies, input files and target URLs to make both POST requests
+# ParallelPost makes use of multipart and therefore requires file input for the multipart POST request
+[Set(files, "", string)]
+[Set(headers, "Monkey:::Madness---Content-Type:::application/json___Monkey:::Madness---Content-Type:::application/json", string)]
+[Set(jsons, "{\"File\": \"multitenancy/set_a_to_1.txt\"}___{\"File\": \"multitenancy/set_a_to_2.txt\"}", string)]
+[Set(urls, "https://dataapi-dot-dev8celbux.uc.r.appspot.com/evaluate___https://dataapi-dot-dev8celbux.uc.r.appspot.com/evaluate", string)]
+
+# Perform the 2 POST request to increment "a" 1000 times
+[ParallelPost(files,headers,jsons,urls)]
+
+# ParallelPost will save the respective responses of the POST requests on the EvalCache as "ParallelPostX"
+# Where X is an integer value
+# Ensure that both reponses returned a total of 1000 for the value "a"
+[Set(expected1, "multitenancy/set_a_to_1.txt: passed", string)]
+[Set(expected2, "multitenancy/set_a_to_2.txt: passed", string)]
+[Set(actual1, [Res("ParallelPost0")], string)]
+[Set(actual2, [Res("ParallelPost1")], string)]
+[AssertContains(actual1, expected1)]
+[AssertContains(actual2, expected2)]

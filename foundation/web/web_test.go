@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/Celbux/celbux-go/foundation/web"
+	"github.com/Celbux/dataapi/foundation/web"
 )
 
 // Framework Features

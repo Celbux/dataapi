@@ -1,0 +1,7 @@
+# [PrintF("B Sleep 1 second")]
+[Sleep(1)]
+# [PrintF("SetA==2")]
+[Set(a, 2, int)]
+# [PrintF("AssertA==2")]
+[AssertEquals(a, "2")]
+# [PrintF("BDone")]

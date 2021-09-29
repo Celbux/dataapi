@@ -1,0 +1,3 @@
+[Evaluate("cascadingerrors/test_cascading_errors_a.txt")]
+[Evaluate("cascadingerrors/test_cascading_errors_b.txt")]
+[Evaluate("cascadingerrors/test_cascading_errors_c.txt")]

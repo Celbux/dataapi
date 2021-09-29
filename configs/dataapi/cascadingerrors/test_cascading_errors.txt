@@ -1,0 +1,13 @@
+# Send post requested to test output of a cascading error
+# We can not call evaluate to invoke this as the errors
+# returned will be cascaded as the errors are returned at the
+# end of an evaluate process
+[Set(json,"{\"File\": \"cascadingerrors/test_cascading_errors_main.txt\"}",string)]
+[Set(headers, "Content-Type___application/json", string)]
+[Set(url,"https://dataapi-dot-dev8celbux.uc.r.appspot.com/evaluate",string)]
+[Post(url,json,headers)]
+
+# Assert that the cascading errors are what is expected for the given suite
+[ReadFile("expected", "configs/dataapi/cascadingerrors/expected_output.txt")]
+[Set(actual, [Res("res")], string)]
+[AssertEquals(expected, actual)]

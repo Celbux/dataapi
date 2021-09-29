@@ -1,0 +1,12 @@
+runtime: go115
+
+service: dataapi
+main: github.com/Celbux/dataapi/services/dataapi
+
+env_variables:
+  DATA_API_WEB_API_HOST: "0.0.0.0:8080"
+  DATA_API_WEB_READ_TIMEOUT: "5s"
+  DATA_API_WEB_WRITE_TIMEOUT: "0s"
+  DATA_API_WEB_SHUTDOWN_TIMEOUT: "5s"
+  DATA_API_DATASTORE_PROJECT_ID: "dev8celbux"
+  DATA_API_DATASTORE_SETTING: "LOCAL_WITH_CLOUD_DB"

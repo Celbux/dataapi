@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/Celbux/celbux-go/foundation/web"
+	"github.com/Celbux/dataapi/foundation/web"
 )
 
 // Test Handlers

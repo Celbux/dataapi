@@ -12,12 +12,17 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 // AssertContains will return an error if parameter 1 is not contained in parameter 0
-// Usage: [AssertContains(0, 1)]						Eg, [AssertContains("foobar", "bar")]
-// Parameter 0: the string containing the element			"foobar"
-// Parameter 1: the element that is a subset of the string	"bar"
+// Usage: [AssertContains(0, 1)]
+// Eg: [AssertContains("foobar", "bar")]
+// Parameter 0: the string containing the element
+// Eg: "foobar"
+// Parameter 1: the element that is a subset of the string
+// Eg: "bar"
 // This will not throw an error as parameter 1 is contained in parameter 0
 func (d DataAPIService) AssertContains(params string) error {
 
@@ -46,10 +51,13 @@ func (d DataAPIService) AssertContains(params string) error {
 }
 
 // AssertEquals will not throw an error if the two input parameters are identical
-// Usage: [AssertEquals(0, 1)]	Eg, [AssertContains("foobar", "foobar")]
-// Parameter 0: value 1				"foobar"
-// Parameter 1: value 2				"bar"
-// This will not throw an error as parameter 0 is equal to parameter 1
+// Usage: [AssertEquals(0, 1)]
+// Eg: [AssertContains("foobar", "foobar")]
+// Parameter 0: value 1
+// Eg: "foobar"
+// Parameter 1: value 2
+// Eg: "bar"
+// This will throw an error as parameter 0 is not equal to parameter 1
 func (d DataAPIService) AssertEquals(params string) error {
 
 	// Get parameters 0 and 1
@@ -76,12 +84,48 @@ func (d DataAPIService) AssertEquals(params string) error {
 
 }
 
-// AssertStringArrEquals will not error if the input string arrays are equal
+// AssertFailure will ensure that the last core failed with the given error code Eg: "-22" (insufficient funds)
+// Usage: [AssertFailure(0)]
+// Eg: [AssertFailure("-22")]
+// Parameter 0: the error code that core returned
+// Eg: "-22"
+// This will throw an error if the error code from the last Core call is not -22
+func (d DataAPIService) AssertFailure(params string) error {
+
+	// Get parameter 0
+	parameters := getParameters(params)
+	if len(parameters) != 1 {
+		return errors.Errorf("AssertEquals expected 1 parameter but got: %v", len(parameters))
+	}
+	error, err := d.EvalString(parameters[0])
+	if err != nil {
+		return err
+	}
+
+	// Get the res field off the EvalCache to perform the error code check
+	res := d.EvalCache["res"].([]string)
+	if res == nil || len(res) == 0 {
+		return errors.New("res[] struct returned from core is empty")
+	}
+	if res[0] != error {
+		return errors.Errorf("expected to fail with error: [%v] but got res: [%v]", error, res)
+	}
+
+	// Return success
+	return nil
+
+}
+
+// AssertStringArrEquals will not error if the two input string arrays are equal
 // Given: [Set(a, "1,2,3", []string)] and [Set(b, "3,2,1", []string)]
-// Usage: [AssertStringArrEquals(0, 1, 2)]				Eg, [AssertStringArrEquals(a, b, true)]
-// Parameter 0: the first array to compare				Eg, a
-// Parameter 1: the second array to compare				Eg, b
-// Parameter 2: a boolean whether order matters or not	Eg, true
+// Usage: [AssertStringArrEquals(0, 1, 2)]
+// Eg: [AssertStringArrEquals(a, b, true)]
+// Parameter 0: the first array to compare
+// Eg: a
+// Parameter 1: the second array to compare
+// Eg: b
+// Parameter 2: a boolean to determine whether order matters or not
+// Eg: true
 // This will not throw an error as order doesn't matter and the arrays are therefore equal
 func (d DataAPIService) AssertStringArrEquals(params string) error {
 
@@ -141,37 +185,8 @@ func (d DataAPIService) AssertStringArrEquals(params string) error {
 
 }
 
-// AssertFailure will ensure that the last core failed with the given error code Eg, "-22" (insufficient funds)
-// Usage: [AssertFailure(0)]						Eg, [AssertFailure("-22")]
-// Parameter 0: the error code that core returned		"-22"
-// This will throw an error if the error code from the last Core call is not -22
-func (d DataAPIService) AssertFailure(params string) error {
-
-	// Get parameter 0
-	parameters := getParameters(params)
-	if len(parameters) != 1 {
-		return errors.Errorf("AssertEquals expected 1 parameter but got: %v", len(parameters))
-	}
-	error, err := d.EvalString(parameters[0])
-	if err != nil {
-		return err
-	}
-
-	// Get the res field off the EvalCache to perform the error code check
-	res := d.EvalCache["res"].([]string)
-	if res == nil || len(res) == 0 {
-		return errors.New("res[] struct returned from core is empty")
-	}
-	if res[0] != error {
-		return errors.Errorf("expected to fail with error [%v] but got res[]: %v", error, res)
-	}
-
-	// Return success
-	return nil
-
-}
-
 // AssertSuccess will ensure that the last core call did not fail
+// Usage: [AssertSuccess()]
 func (d DataAPIService) AssertSuccess() error {
 
 	// Get the response of the EvalCache and ensure no error code is present
@@ -193,6 +208,15 @@ func (d DataAPIService) AssertSuccess() error {
 
 }
 
+// DirectoryExists returns true if the directory exists
+func DirectoryExists(path string) bool {
+	_, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return true
+}
+
 // Eval will execute the data code expression given
 // Eg data code: [Set(s, "Hello World!", string)][PrintF("%v", s)]
 // This string input will evaluate to printing "Hello World!" to the console
@@ -205,7 +229,7 @@ func (d DataAPIService) Eval(expression string) (map[string]interface{}, error) 
 	// There could be more than 1 data block given and thus
 	// would have to be evaluated individually in a for loop
 	expressionsRaw := getExpressions(expression)
-	for _, rawExpression := range expressionsRaw {
+	for i, rawExpression := range expressionsRaw {
 		if strings.Contains(rawExpression, "[") && strings.Contains(rawExpression, "]") {
 			// Get method names and prepare parameters on the EvalCache
 			// if the expression contains a Functions call
@@ -242,10 +266,12 @@ func (d DataAPIService) Eval(expression string) (map[string]interface{}, error) 
 		if err != nil {
 			return nil, err
 		}
-		if val == nil {
+		if val == nil && i == len(expressionsRaw) - 1 {
 			return nil, errors.New("[Pass()]")
 		}
 
+		// Handle the returned data that was returned from Eval
+		// This could be a primitive or a report tree
 		switch val.(type) {
 		case map[string]interface{}:
 			// Check if the evaluated function may have returned an error inside the map[string]interface{}
@@ -272,6 +298,7 @@ func (d DataAPIService) Eval(expression string) (map[string]interface{}, error) 
 			// Used for eval of single return values
 			out["val"] = fmt.Sprintf("%v", val)
 		}
+
 	}
 
 	// Return success
@@ -284,6 +311,11 @@ func (d DataAPIService) Eval(expression string) (map[string]interface{}, error) 
 // Each line in the input file gets evaluated and all errors arr built up into a tree
 // The tree is used to store which test failed and which tests passed
 // and is return as the result of a Data API run
+// You can call Evaluate on a directory or a file
+// Usage: [Evaluate(0)]
+// Eg: [Evaluate("cascadingerrors")]
+// Parameter 0: The directory or test case file you want to run
+// Eg: "cascadingerrors"
 func (d DataAPIService) Evaluate(inFile string) map[string]interface{} {
 
 	// Log file to track which test is currently running
@@ -291,7 +323,7 @@ func (d DataAPIService) Evaluate(inFile string) map[string]interface{} {
 
 	// Evaluate can not fail and always returns a report
 	// Any error will be associated with the file name that is being Evaluated
-	// Eg. tree["someTest.txt"] = "error: some function failed"
+	// Eg: tree["someTest.txt"] = "error: some function failed"
 	out := make(map[string]interface{})
 	report := &tools.Tree{Data: inFile}
 	out["report"] = report
@@ -311,7 +343,8 @@ func (d DataAPIService) Evaluate(inFile string) map[string]interface{} {
 	// Read the file contents line by line into s.Functions.Eval
 	osFile, err := os.OpenFile(filepath, os.O_RDONLY, 0644)
 	if err != nil {
-		report.Add(filepath, err.Error())
+		report.Add(filepath, "could not open file")
+		report.Add("could not open file", err.Error())
 		return out
 	}
 	var dataRawArr [][]byte
@@ -395,6 +428,7 @@ func (d DataAPIService) Evaluate(inFile string) map[string]interface{} {
 		}
 	}
 
+	// Return success with the report
 	return out
 
 }
@@ -468,24 +502,18 @@ func (d DataAPIService) EvalString(expression string) (string, error) {
 
 }
 
-// DirectoryExists returns true if the directory exists
-func DirectoryExists(path string) bool {
-	_, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return true
-}
-
 // Fail will return the given string as an error
 func (d DataAPIService) Fail(err string) error {
 	return errors.New(err)
 }
 
 // For is just like your normal for loop:
-// For(0, 1)												Eg, [For((i < 3), [PrintF("Hello World %v", i)][Set(i,i+1,int)])]
-// Parameter 0: is the condition that will break the loop 	Eg, (i < size)
-// Parameter 1: is the code that runs inside the for loop 	Eg, [PrintF("Hello World %v", i)][Set(i,i+1,int)]
+// Usage: [For(0, 1)]
+// Eg: [For((i < 3), [PrintF("Hello World %v", i)][Set(i,i+1,int)])]
+// Parameter 0: is the condition that will break the loop
+// Eg: (i < size)
+// Parameter 1: is the code that runs inside the for loop
+// Eg: [PrintF("Hello World %v", i)][Set(i,i+1,int)]
 // This for loop will output:
 // > Hello World 0
 // > Hello World 1
@@ -512,19 +540,19 @@ func (d DataAPIService) For(params string) interface{} {
 
 		// If true, run the expression in parameter 2
 		_, err = d.Eval(expressions[1])
-		if err != nil {
+		if err != nil && err.Error() != "[Pass()]"{
 			return err
 		}
 	}
 
 	// Return success
-	return nil
+	return errors.New("[Pass()]")
 
 }
 
 // getExpressions retrieves all expressions nested on the same scope level
 // This is equivalent to splitting each line of code like java does with semi colons
-// Eg, 	expressions([Set(i,1,int)][Set(i,[GetSomeVar()],i,int)][Set(j,3,string)])
+// Eg: 	expressions([Set(i,1,int)][Set(i,[GetSomeVar()],i,int)][Set(j,3,string)])
 // Will split into: [Set(i,1,int)]	[Set(i,[GetSomeVar()],i,int)]	[Set(j,3,string)]
 // And return: []string = {
 //		"[Set(i,1,int)]",
@@ -536,7 +564,7 @@ func getExpressions(expressions string) []string {
 	var out []string
 	// If the expression does not contain '[' or ']'
 	// then we can directly evaluate it as it is not a Functions call
-	// Eg, (i <= 10) versus [Set(Val, i <= 10, bool)]
+	// Eg: (i <= 10) versus [Set(Val, i <= 10, bool)]
 	// The first instance will set the 'res' variable by default on the EvalCache
 	// The second instance will call Set() and  set the 'Val' variable on the EvalCache
 	// Both instances set the value to the evaluated result of i <= 10
@@ -560,6 +588,7 @@ func getExpressions(expressions string) []string {
 		}
 	}
 
+	// Return the expressions
 	return out
 
 }
@@ -568,7 +597,7 @@ func getExpressions(expressions string) []string {
 // Input:
 // > expression = [PrintF("Hello World %v", i)]
 // Output:
-// > method = functions.PrintF
+// > method = dataapi.PrintF
 // > params = ("Hello World %v", i)
 // > err = nil
 func GetFunctionDefinition(expression string) (string, string, error) {
@@ -610,7 +639,7 @@ func GetFunctionDefinition(expression string) (string, string, error) {
 }
 
 // getParameters retrieves all the parameters seperated by a comma
-// Eg, [For([Set(i,0,int)],[Bool(i < 10)],[Set(i,0,int)],[doWork()])]
+// Eg: [For([Set(i,0,int)],[Bool(i < 10)],[Set(i,0,int)],[doWork()])]
 // The expression must return all parameters delimited by the top most comma delimitation
 // Therefore: [For([Set(i,0,int)]	,	[Bool(i < 10)]	,	[Set(i,0,int)]	,	[doWork()])]
 // Top most commas:					^					^					^
@@ -622,8 +651,8 @@ func GetFunctionDefinition(expression string) (string, string, error) {
 // }
 func getParameters(expression string) []string {
 
-	var out []string
 	// Get all parameters and put them in []string
+	var out []string
 	scope := 0
 	start := 0
 	for i, char := range expression {
@@ -639,14 +668,15 @@ func getParameters(expression string) []string {
 	}
 	out = append(out, expression[start:])
 
+	// Return all the parameters
 	return out
 
 }
 
 // GetResults will mine the report for successes and failures after calling Evaluate on a file
 // The results will pretty print to the user
-// The Evaluate has a batch error mechanism for handling each line evaluated
-// Get seperates the successes and failures from the report tree
+// Evaluate has a batch error mechanism for handling each line evaluated
+// GetResults separates the successes and failures from the report tree
 func (d DataAPIService) GetResults(report tools.Tree) ([]string, []string, error) {
 
 	// Mine all the failed results from the report
@@ -675,9 +705,12 @@ func (d DataAPIService) GetResults(report tools.Tree) ([]string, []string, error
 }
 
 // If is just like your normal if statement:
-// If(0, 1)																Eg, [If((i < 3), [Println("Hello World")])]
-// Parameter 0: the condition that will allow the statement to execute, Eg, (i < 3)
-// Parameter 1: is the code that runs inside the if statement,			Eg, [PrintF("Hello World %v", i)][Set(i,i+1,int)]
+// Usage: If(0, 1)
+// Eg: [If((i < 3), [Println("Hello World")])]
+// Parameter 0: the condition that will allow the statement to execute
+// Eg: (i < 3)
+// Parameter 1: is the code that runs inside the if statement
+// Eg: [PrintF("Hello World %v", i)][Set(i,i+1,int)]
 // Hello World will print if the parameter 0 evaluates to true
 func (d DataAPIService) If(params string) interface{} {
 
@@ -709,6 +742,106 @@ func (d DataAPIService) If(params string) interface{} {
 
 }
 
+// ParallelPost is a data function that will send multiple POST requests in parallel
+// Usage:
+// [Set(files, "file1.txt___file2.txt", string)]
+// [Set(headers, "Monkey:::Madness---Content-Type:::application/json___Monkey:::Madness---Content-Type:::application/json"
+// [Set(jsons, "{\"Data\": \"1234\"}___{\"Data\": \"5678\"}", string)]
+// [Set(urls, "https://someUrl.com/someEndpoint___https://someOtherUrl.com/someOtherEndpoint", string)]
+// [ParallelPost(files, jsons, urls)]
+//
+// Parameter 0: array list delimited by "___" of the multipart files you want to attach to the multipart request:
+// Eg: "file1.txt___file2.txt"
+// Parameter 1: array list delimited by "___" of multiple key value pairs (mapped with ":::" and seperated by "---") that is the HTTP request headers:
+// Eg: "Monkey:::Madness---Content-Type:::application/json___Monkey:::Madness---Content-Type:::application/json" will add the following headers:
+// Request1 headers: Monkey: Madness, Content-Type: application/json
+// Request2 headers: Monkey: Madness, Content-Type: application/json
+// Parameter 2: array list delimited by "___" of the json bodies
+// Eg: "{\"Data\": \"1234\"}___{\"Data\": \"5678\"}"
+// Parameter 3: array list delimited by "___" of the urls to send the request to
+//
+// ParallelPost will save the respective responses of the POST requests on the EvalCache as "ParallelPostX"
+// Where X is an integer value
+// You can access the raw JSON string response from:
+// [Set(response1, [Res("ParallelPost1")], string)]
+// [Set(response2, [Res("ParallelPost2")], string)]
+func (d DataAPIService) ParallelPost(params string) interface{} {
+
+	// Gets parameters 0, 1, 2 and 3
+	parameters := getParameters(params)
+	if len(parameters) != 4 {
+		return errors.Errorf("data function 'ParallelPost' expected 4 parameters but got: %v", len(parameters))
+	}
+	filesRaw, err := d.EvalString(parameters[0])
+	if err != nil {
+		return err
+	}
+	_ = strings.Split(filesRaw, "___")
+	var headers []map[string]string
+	allHeadersRaw, err := d.EvalString(parameters[1])
+	if err != nil {
+		return err
+	}
+	allHeadersArr := strings.Split(allHeadersRaw, "___")
+	for _, headersArr := range allHeadersArr {
+		headersMap := make(map[string]string)
+		headersArr := strings.Split(headersArr, "---")
+		for _, header := range headersArr {
+			header := strings.Split(header, ":::")
+			if len(header) != 2 {
+				return errors.Errorf("header is not in the format 'key::value'")
+			}
+			headersMap[header[0]] = header[1]
+		}
+		headers = append(headers, headersMap)
+	}
+	var jsonMaps []map[string]interface{}
+	jsonsRaw, err := d.EvalString(parameters[2])
+	if err != nil {
+		return err
+	}
+	jsons := strings.Split(jsonsRaw, "___")
+	for _, jsonBody := range jsons {
+		jsonBody = strings.Replace(jsonBody, "\\\"", "\"", -1)
+		jsonMap := make(map[string]interface{})
+		err = json.Unmarshal([]byte(jsonBody), &jsonMap)
+		if err != nil {
+			return err
+		}
+		jsonMaps = append(jsonMaps, jsonMap)
+	}
+	urlsRaw, err := d.EvalString(parameters[3])
+	if err != nil {
+		return err
+	}
+	urls := strings.Split(urlsRaw, "___")
+	if len(urls) != len(jsonMaps) {
+		return errors.New(fmt.Sprintf("number of URLs (%v) does not align with the number of JSON bodies (%v)", len(urls), len(jsons)))
+	}
+
+	// Make the Post requests asynchronously
+	var waitGroup sync.WaitGroup
+	for i := 0; i < len(jsonMaps); i++ {
+		waitGroup.Add(1)
+		go func(url string, header map[string]string, jsonBody map[string]interface{}, i int) {
+			defer waitGroup.Done()
+			resp, err := web.DoRequest(url, header, http.MethodPost, jsonBody)
+			if err != nil {
+				d.EvalCache[fmt.Sprintf("ParallelPost%v", i)] = errors.Errorf("error sending POST request to URL %v", url)
+				return
+			}
+			d.EvalCache[fmt.Sprintf("ParallelPost%v", i)] = string(resp)
+		}(urls[i], headers[i], jsonMaps[i], i)
+	}
+
+	// Wait until all the POST requests are complete
+	waitGroup.Wait()
+
+	// Return success
+	return nil
+
+}
+
 // Pass is a function that can not fail and is used to build the failures/passes tree
 // to return a Data API output report
 func (d DataAPIService) Pass(params string) {
@@ -716,13 +849,19 @@ func (d DataAPIService) Pass(params string) {
 }
 
 // Post will send a POST request which includes a file and JSON data
-// Usage: [Post(0, 1, 2)]					Eg, [Set(url, "https://rnd-api-v1-dot-dev8celbux.uc.r.appspot.com/api/rnd/pay?ns=rnd", string)]
-//												[Set(jsonBody, "{\"VoucherNo\": \"117-22427-719752\",\"StoreID\":\"Store1\",\"Reference\":\"1234\",\"Amount\":\"2000\",\"Currency\":\"{{currency}}\",\"Metadata\":\"\",\"RequestDT\":\"1234\"}", string)]
-//												[Set(headers, "Authorization___Bearer 9m1,Monkey___Madness", string)]
-//												[Post(url, jsonBody, headers)]
-// Parameter 0: the target url				Eg, "https://rnd-api-v1-dot-dev8celbux.uc.r.appspot.com/api/rnd/pay?ns=rnd"
-// Parameter 1: json input					Eg, "{\"VoucherNo\": \"117-22427-719752\",\"StoreID\":\"Store1\",\"Reference\":\"1234\",\"Amount\":\"2000\",\"Currency\":\"{{currency}}\",\"Metadata\":\"\",\"RequestDT\":\"1234\"}"
-// Parameter 2: request headers				Eg, "Authorization___Bearer 9m1,Monkey___Madness"
+// Usage: [Post(0, 1, 2)]
+// Eg: 	[Set(url, "https://rnd-api-v1-dot-dev8celbux.uc.r.appspot.com/api/rnd/pay?ns=rnd", string)]
+//     	[Set(jsonBody, "{\"VoucherNo\": \"117-22427-719752\",\"StoreID\":\"Store1\",\"Reference\":\"1234\",\"Amount\":\"2000\",\"Currency\":\"{{currency}}\",\"Metadata\":\"\",\"RequestDT\":\"1234\"}", string)]
+//		[Set(heders, "Authorization___Bearer 9m1,Monkey___Madness", string)]
+//		[Post(url, jsonBody, headers)]
+// Parameter 0: the target url
+// Eg: "https://rnd-api-v1-dot-dev8celbux.uc.r.appspot.com/api/rnd/pay?ns=rnd"
+// Parameter 1: json input
+// Eg: "{\"VoucherNo\": \"117-22427-719752\",\"StoreID\":\"Store1\",\"Reference\":\"1234\",\"Amount\":\"2000\",\"Currency\":\"{{currency}}\",\"Metadata\":\"\",\"RequestDT\":\"1234\"}"
+// Parameter 2: request headers
+// Eg: "Authorization___Bearer 9m1,Monkey___Madness"
+// The JSON response will be set under the variable "res" on the EvalCache and be accessed by the Res data function
+// Eg: [Set(response1, [Res("res")], string)]
 func (d DataAPIService) Post(params string) interface{} {
 
 	// Gets parameters 0, 1 and 2
@@ -761,7 +900,7 @@ func (d DataAPIService) Post(params string) interface{} {
 		headers[header[0]] = header[1]
 	}
 
-	// Make the Post request using the foundation package
+	// Make the Post request
 	resp, err := web.DoRequest(url, headers, http.MethodPost, jsonMap)
 	response := string(resp)
 	if err != nil {
@@ -775,9 +914,12 @@ func (d DataAPIService) Post(params string) interface{} {
 }
 
 // PrintF is just like your fmt.PrintF:
-// PrintF(0, 1, 2)								Eg, [PrintF("Hello World %v%v%v", 1, 2, 3)]
-// Parameter 0: is the formatted string 		Eg, "Hello World %v%v%v"
-// Parameter 1++: are the veradic variables 	Eg, 1, 2, 3
+// Usage: [PrintF(0, 1, 2)]
+// Eg: [PrintF("Hello World %v%v%v", 1, 2, 3)]
+// Parameter 0: is the formatted string
+// Eg: "Hello World %v%v%v"
+// Parameter 1++: are the variadic variables
+// Eg: 1, 2, 3
 // This will output:
 // > Hello World 123
 func (d DataAPIService) PrintF(params string) interface{} {
@@ -791,7 +933,7 @@ func (d DataAPIService) PrintF(params string) interface{} {
 	// Get format as first param
 	format := parameters[0]
 
-	// Build []interface{}
+	// Build []interface{} so that we can call input our data into the variadic field in fmt.Sprintf
 	var aInterfaces []interface{}
 	for i, s := range parameters {
 		if i == 0 {
@@ -804,10 +946,9 @@ func (d DataAPIService) PrintF(params string) interface{} {
 		aInterfaces = append(aInterfaces, sOut["val"])
 	}
 
-	// Print
+	// Print with trimming the wrapping parenthesis
 	s := fmt.Sprintf(format, aInterfaces...)
-	s = strings.TrimLeft(s, "\"")
-	s = strings.TrimRight(s, "\"")
+	s = s[1:len(s)-1]
 	d.Log.Println(s)
 
 	// Return success
@@ -815,10 +956,52 @@ func (d DataAPIService) PrintF(params string) interface{} {
 
 }
 
-// Res will get the given property out of the EvalCache
-// Res(0)										Eg, [Res("error")]
-// Parameter 0: field you want to retrieve if "res" is set to a map or json
-// response from another method					Eg, "error"
+// ReadFile will read the string data from the given filepath and
+// save its contents under the given variable on the EvalCache
+// Usage: [ReadFile(0, 1)]
+// Eg: [ReadFile("expected", "cascadingerrors/expected_output.txt")]
+// Parameter 0: the variable on the EvalCache that the returned value will be stored
+// Eg: "expected"
+// Parameter 1: the filepath of the file we want to read, the value is relative the root directory
+// Eg: "configs/dataapi/cascadingerrors/expected_output.txt"
+func (d DataAPIService) ReadFile(params string) interface{} {
+
+	// Gets parameters 0 and 1
+	parameters := getParameters(params)
+	if len(parameters) == 0 {
+		return errors.Errorf("ReadFile expected 2 parameters but got: %v", len(parameters))
+	}
+	variable, err := d.EvalString(parameters[0])
+	if err != nil {
+		return err
+	}
+	filepath, err := d.EvalString(parameters[1])
+	if err != nil {
+		return err
+	}
+
+	// Read the contents of the file
+	osFile, err := os.OpenFile(filepath, os.O_RDONLY, 0644)
+	if err != nil {
+		return err
+	}
+	dataRaw, err := ioutil.ReadAll(osFile)
+	if err != nil {
+		return err
+	}
+	data := string(dataRaw)
+
+	// Save the contents of the file under the given variable on the EvalCache
+	d.EvalCache[variable] = data
+
+	return data
+}
+
+// Res will return the given property out of the EvalCache
+// Usage: Res(0)
+// Eg: [Res("error")]
+// Parameter 0: the field you want to retrieve from the EvalCache
+// Eg: "error"
 // This will try return the "error" field from EvalCache["res"]:
 // > Invalid request
 func (d DataAPIService) Res(params string) interface{} {
@@ -836,7 +1019,7 @@ func (d DataAPIService) Res(params string) interface{} {
 	// Get the field
 	out, ok := d.EvalCache[field]
 	if !ok {
-		return errors.Errorf("field %v could not be found on the eval cache", field)
+		return errors.Errorf("field %v could not be found on the EvalCache", field)
 	}
 
 	// Return the field
@@ -844,13 +1027,41 @@ func (d DataAPIService) Res(params string) interface{} {
 
 }
 
+// Sleep will sleep for X seconds
+// Usage: [Sleep(0)]
+// Eg: [Sleep(5)]
+// Parameter 0: the amount of seconds you want to sleep
+// Eg: 5
+func (d DataAPIService) Sleep(params string) interface{} {
+
+	// Gets parameter 0
+	parameters := getParameters(params)
+	if len(parameters) != 1 {
+		return errors.Errorf("Sleep expected 1 parameter but got: %v", len(parameters))
+	}
+	seconds, err := d.EvalInt(parameters[0])
+	if err != nil {
+		return err
+	}
+
+	// Sleep ZZZzzz...
+	time.Sleep(time.Duration(seconds) * time.Second)
+
+	return nil
+
+}
+
 // Set will create a variable on the EvalCache
-// Usage: Set(0, 1, 2)						Eg, [Set(i, 0, int)]
-// Parameter 0: the name of the variable	Eg, i
-// Parameter 1: the value of the variable	Eg, 0
-// Parameter 2: the type of the value		Eg, int
+// Usage: [Set(0, 1, 2)]
+// Eg: [Set(i, 0, int)] or [Set(s, "hello world!", string)]
+// Parameter 0: the name of the variable
+// Eg: i
+// Parameter 1: the value of the variable
+// Eg: 0
+// Parameter 2: the type of the value
+// Eg: int, string, bool
 // Therefore, the above is the equivalent to running 'i := 0'
-// The variable 'i' will be available when Eval() is run
+// The variable 'i' will be available when Eval() is run as it is set on the EvalCache
 func (d DataAPIService) Set(params string) interface{} {
 
 	// Gets parameters 0, 1, and 2
@@ -875,6 +1086,7 @@ func (d DataAPIService) Set(params string) interface{} {
 
 	// Set the EvalCache to the returned value of Parameter 1
 	// Ensure the returned data type aligns with Parameter 2
+	// This sounds weird, but read it a couple of times with the code
 	variable := strings.TrimSpace(parameters[0])
 	value := strings.TrimSpace(parameters[1])
 	variableType := strings.TrimSpace(parameters[2])

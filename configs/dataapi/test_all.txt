@@ -1,0 +1,4 @@
+# Run evaluate functions to ensure eval logic is working
+# [Evaluate("test_if_for_printf_set.txt")]
+[Evaluate("cascadingerrors/test_cascading_errors.txt")]
+[Evaluate("multitenancy/test_multi_tenancy.txt")]

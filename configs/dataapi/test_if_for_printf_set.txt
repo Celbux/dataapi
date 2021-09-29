@@ -1,0 +1,6 @@
+# You can use '#' to comment out lines
+[Set(i, 0, int)]
+[Set(size, 10, int)]
+[Set(hello, "hello", string)]
+[Set(world, "world", string)]
+[For(i < size, [If(i%2 == 0, [PrintF("%v %v", hello, world)])][Set(i, i+1, int)])]
