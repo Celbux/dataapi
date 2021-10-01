@@ -27,7 +27,7 @@ import (
 func (d DataAPIService) AssertContains(params string) error {
 
 	// Get parameters 0 and 1
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) != 2 {
 		return errors.Errorf("AssertContains expected 2 parameter but got: %v", len(parameters))
 	}
@@ -61,7 +61,7 @@ func (d DataAPIService) AssertContains(params string) error {
 func (d DataAPIService) AssertEquals(params string) error {
 
 	// Get parameters 0 and 1
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) != 2 {
 		return errors.Errorf("AssertEquals expected 2 parameter but got: %v", len(parameters))
 	}
@@ -93,7 +93,7 @@ func (d DataAPIService) AssertEquals(params string) error {
 func (d DataAPIService) AssertFailure(params string) error {
 
 	// Get parameter 0
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) != 1 {
 		return errors.Errorf("AssertEquals expected 1 parameter but got: %v", len(parameters))
 	}
@@ -130,7 +130,7 @@ func (d DataAPIService) AssertFailure(params string) error {
 func (d DataAPIService) AssertStringArrEquals(params string) error {
 
 	// Get parameters 0, 1 and 2
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) != 3 {
 		return errors.Errorf("AssertStringArrEquals expected 3 parameters but got: %v", len(parameters))
 	}
@@ -209,7 +209,7 @@ func (d DataAPIService) AssertSuccess() error {
 }
 
 // DirectoryExists returns true if the directory exists
-func DirectoryExists(path string) bool {
+func (d DataAPIService) DirectoryExists(path string) bool {
 	_, err := os.Stat(path)
 	if err != nil {
 		return false
@@ -228,12 +228,15 @@ func (d DataAPIService) Eval(expression string) (map[string]interface{}, error) 
 	// Get all expressions
 	// There could be more than 1 data block given and thus
 	// would have to be evaluated individually in a for loop
-	expressionsRaw := getExpressions(expression)
+	expressionsRaw := d.GetExpressions(expression)
 	for i, rawExpression := range expressionsRaw {
+		var method string
+		var params string
 		if strings.Contains(rawExpression, "[") && strings.Contains(rawExpression, "]") {
 			// Get method names and prepare parameters on the EvalCache
 			// if the expression contains a Functions call
-			method, params, err := GetFunctionDefinition(rawExpression)
+			var err error
+			method, params, err = d.GetFunctionDefinition(rawExpression)
 			if err != nil {
 				return nil, err
 			}
@@ -264,7 +267,22 @@ func (d DataAPIService) Eval(expression string) (map[string]interface{}, error) 
 		// The report tree will prune out the success and failures from the tree last
 		val, err := exp.Eval(newMap)
 		if err != nil {
-			return nil, err
+			method, _, _ := d.GetFunctionDefinition(rawExpression)
+			methodNotFound := tools.StripField(err.Error(), "Method (.*) not found")
+			if methodNotFound == strings.Replace(method, "dataapi.", "", 1) {
+				expression = strings.Replace(expression, "dataapi", "dataapi.CoreDataAPI", 1)
+				exp := &goScript.Expr{}
+				err := exp.Prepare(expression)
+				if err != nil {
+					return nil, err
+				}
+				val, err = exp.Eval(newMap)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				return nil, err
+			}
 		}
 		if val == nil && i == len(expressionsRaw) - 1 {
 			return nil, errors.New("[Pass()]")
@@ -355,7 +373,7 @@ func (d DataAPIService) Evaluate(inFile string) map[string]interface{} {
 	if err != nil {
 		// If the file is a directory we will want to run Evaluate on all the files within
 		// Therefore, get all the data first and loop through it later
-		if DirectoryExists(filepath) {
+		if d.DirectoryExists(filepath) {
 			files, err := ioutil.ReadDir(filepath)
 			if err != nil {
 				report.Add(filepath, err.Error())
@@ -521,7 +539,7 @@ func (d DataAPIService) Fail(err string) error {
 func (d DataAPIService) For(params string) interface{} {
 
 	// Gets parameters 0 and 1
-	expressions := getParameters(params)
+	expressions := d.GetParameters(params)
 	if len(expressions) != 2 {
 		return errors.Errorf("for loop expected 2 expressions but got: %v", len(expressions))
 	}
@@ -559,7 +577,7 @@ func (d DataAPIService) For(params string) interface{} {
 //		"[Set(i,[GetSomeVar()],i,int)]",
 //		"[Set(j,3,string)]",
 // }
-func getExpressions(expressions string) []string {
+func (d DataAPIService) GetExpressions(expressions string) []string {
 
 	var out []string
 	// If the expression does not contain '[' or ']'
@@ -600,7 +618,7 @@ func getExpressions(expressions string) []string {
 // > method = dataapi.PrintF
 // > params = ("Hello World %v", i)
 // > err = nil
-func GetFunctionDefinition(expression string) (string, string, error) {
+func (d DataAPIService) GetFunctionDefinition(expression string) (string, string, error) {
 
 	// Get indexes of '[', ']' and '(', ')'
 	// to slice the method name and parameter list respectively
@@ -649,7 +667,7 @@ func GetFunctionDefinition(expression string) (string, string, error) {
 //		"[Set(i,0,int)]",
 //		"[doWork()]"
 // }
-func getParameters(expression string) []string {
+func (d DataAPIService) GetParameters(expression string) []string {
 
 	// Get all parameters and put them in []string
 	var out []string
@@ -715,7 +733,7 @@ func (d DataAPIService) GetResults(report tools.Tree) ([]string, []string, error
 func (d DataAPIService) If(params string) interface{} {
 
 	// Gets parameters 0 and 1
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) != 2 {
 		return errors.Errorf("if statement expected 2 parameters but got: %v", len(parameters))
 	}
@@ -768,7 +786,7 @@ func (d DataAPIService) If(params string) interface{} {
 func (d DataAPIService) ParallelPost(params string) interface{} {
 
 	// Gets parameters 0, 1, 2 and 3
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) != 4 {
 		return errors.Errorf("data function 'ParallelPost' expected 4 parameters but got: %v", len(parameters))
 	}
@@ -865,7 +883,7 @@ func (d DataAPIService) Pass(params string) {
 func (d DataAPIService) Post(params string) interface{} {
 
 	// Gets parameters 0, 1 and 2
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) != 3 {
 		return errors.Errorf("data function 'Post' expected 3 parameters but got: %v", len(parameters))
 	}
@@ -925,7 +943,7 @@ func (d DataAPIService) Post(params string) interface{} {
 func (d DataAPIService) PrintF(params string) interface{} {
 
 	// Gets parameters 0, 1 and 2...
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) == 0 {
 		return errors.Errorf("PrintF expected atleast 1 parameter but got: %v", len(parameters))
 	}
@@ -967,7 +985,7 @@ func (d DataAPIService) PrintF(params string) interface{} {
 func (d DataAPIService) ReadFile(params string) interface{} {
 
 	// Gets parameters 0 and 1
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) == 0 {
 		return errors.Errorf("ReadFile expected 2 parameters but got: %v", len(parameters))
 	}
@@ -1007,7 +1025,7 @@ func (d DataAPIService) ReadFile(params string) interface{} {
 func (d DataAPIService) Res(params string) interface{} {
 
 	// Gets parameter 0
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) != 1 {
 		return errors.Errorf("Res expected 1 parameter but got: %v", len(parameters))
 	}
@@ -1035,7 +1053,7 @@ func (d DataAPIService) Res(params string) interface{} {
 func (d DataAPIService) Sleep(params string) interface{} {
 
 	// Gets parameter 0
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	if len(parameters) != 1 {
 		return errors.Errorf("Sleep expected 1 parameter but got: %v", len(parameters))
 	}
@@ -1065,7 +1083,7 @@ func (d DataAPIService) Sleep(params string) interface{} {
 func (d DataAPIService) Set(params string) interface{} {
 
 	// Gets parameters 0, 1, and 2
-	parameters := getParameters(params)
+	parameters := d.GetParameters(params)
 	rawString := ""
 	if len(parameters) > 3 {
 		for i, parameter := range parameters {

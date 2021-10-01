@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/Celbux/dataapi/business/dataapi"
-	coredataapi "github.com/Celbux/dataapi/business/dataapi"
 	"github.com/Celbux/dataapi/foundation/tools"
 	"github.com/Celbux/dataapi/foundation/web"
 	"github.com/pkg/errors"
@@ -62,11 +61,8 @@ func (d DataAPIHandlers) evaluate(ctx context.Context, r *http.Request, ) ([]str
 		return nil, nil, &dataapi.Error{Err: errors.New(fmt.Sprintf("error evaluate/web.Decode: %v", err.Error()))}
 	}
 
+	// Create the eval cache the service
 	d.Service.EvalCache = make(map[string]interface{})
-	d.Service.EvalCache["coredataapi"] = &coredataapi.DataAPIService{
-		EvalCache: d.Service.EvalCache,
-		Log:       nil,
-	}
 	d.Service.EvalCache["dataapi"] = &d.Service
 
 	// Evaluate all expressions in input filename
