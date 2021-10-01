@@ -228,26 +228,26 @@ func (d DataAPIService) Eval(expression string) (map[string]interface{}, error) 
 	// Get all expressions
 	// There could be more than 1 data block given and thus
 	// would have to be evaluated individually in a for loop
+	var allErrors []error
 	expressionsRaw := d.GetExpressions(expression)
 	for i, rawExpression := range expressionsRaw {
 		var method string
 		var params string
+		expression = rawExpression
 		if strings.Contains(rawExpression, "[") && strings.Contains(rawExpression, "]") {
 			// Get method names and prepare parameters on the EvalCache
 			// if the expression contains a Functions call
 			var err error
 			method, params, err = d.GetFunctionDefinition(rawExpression)
 			if err != nil {
-				return nil, err
+				allErrors = append(allErrors, err)
+				continue
 			}
 			d.EvalCache["params"] = params
 			expression = method + "(params)"
 			if len(params) == 0 {
 				expression = method + "()"
 			}
-		} else {
-			// Else set expression to be evaluated as is
-			expression = rawExpression
 		}
 
 		// Prepare expression struct and execute the expression using the EvalCache
@@ -255,7 +255,8 @@ func (d DataAPIService) Eval(expression string) (map[string]interface{}, error) 
 		exp := &goScript.Expr{}
 		err := exp.Prepare(expression)
 		if err != nil {
-			return nil, err
+			allErrors = append(allErrors, err)
+			continue
 		}
 
 		// Set newMap, as exp.Eval will break if the map is not a new pointer
@@ -274,14 +275,17 @@ func (d DataAPIService) Eval(expression string) (map[string]interface{}, error) 
 				exp := &goScript.Expr{}
 				err := exp.Prepare(expression)
 				if err != nil {
-					return nil, err
+					allErrors = append(allErrors, err)
+					continue
 				}
 				val, err = exp.Eval(newMap)
 				if err != nil {
-					return nil, err
+					allErrors = append(allErrors, err)
+					continue
 				}
 			} else {
-				return nil, err
+				allErrors = append(allErrors, err)
+				continue
 			}
 		}
 		if val == nil && i == len(expressionsRaw) - 1 {
@@ -292,31 +296,37 @@ func (d DataAPIService) Eval(expression string) (map[string]interface{}, error) 
 		// This could be a primitive or a report tree
 		switch val.(type) {
 		case map[string]interface{}:
-			// Check if the evaluated function may have returned an error inside the map[string]interface{}
-			res := val.(map[string]interface{})
-			errVal, ok := res["error"]
-			if ok {
-				return nil, errVal.(error)
-			}
-
 			// Check for cascading results, and return them to Evaluate from Eval
 			// All failures/successes will be evaluated into a report tree
 			// We don't want to fail the evaluate process immediately
-			_, ok = res["report"].(*tools.Tree)
+			res := val.(map[string]interface{})
+			_, ok := res["report"].(*tools.Tree)
 			if ok {
 				return res, nil
 			}
-
-			// If no error return out
-			return out, nil
 		case error:
-			// If just error, return it
-			return nil, val.(error)
+			// If there is an error append it and continue
+			allErrors = append(allErrors, val.(error))
+			continue
 		default:
 			// Used for eval of single return values
 			out["val"] = fmt.Sprintf("%v", val)
 		}
 
+	}
+
+	if len(allErrors) > 0 {
+		errString := ""
+		for _, err := range allErrors {
+			if err.Error() == "[Pass()]" {
+				continue
+			}
+			errString += fmt.Sprintf("%v, ", err.Error())
+		}
+		if errString == "" {
+			errString = "[Pass()]"
+		}
+		return nil, errors.New(errString)
 	}
 
 	// Return success
