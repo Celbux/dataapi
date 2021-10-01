@@ -1,6 +1,6 @@
 runtime: go115
 
-service: dataapi
+service: core-dataapi
 main: github.com/Celbux/dataapi/services/dataapi
 
 env_variables:
