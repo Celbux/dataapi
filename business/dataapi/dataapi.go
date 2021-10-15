@@ -666,7 +666,7 @@ func (d DataAPIService) GetFunctionDefinition(expression string) (string, string
 
 }
 
-// getParameters retrieves all the parameters seperated by a comma
+// GetParameters retrieves all the parameters seperated by a comma
 // Eg: [For([Set(i,0,int)],[Bool(i < 10)],[Set(i,0,int)],[doWork()])]
 // The expression must return all parameters delimited by the top most comma delimitation
 // Therefore: [For([Set(i,0,int)]	,	[Bool(i < 10)]	,	[Set(i,0,int)]	,	[doWork()])]

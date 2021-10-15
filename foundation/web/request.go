@@ -99,7 +99,7 @@ func DoRequest(url string, headers map[string]string, httpMethod string, data in
 	defer resp.Body.Close()
 
 	// If not StatusOK, return error
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		err = errors.New(fmt.Sprintf("failed to send %v request to %v", httpMethod, url))
 		bytes, err2 := ioutil.ReadAll(resp.Body)
 		if err2 != nil {
