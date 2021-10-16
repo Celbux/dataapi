@@ -37,7 +37,6 @@ func (t *Tree) AddTree(other Tree) {
 	for _, node := range t.Nodes {
 		if node.Data == other.Data {
 			node.Nodes = append(node.Nodes, other.Nodes...)
-			break
 		}
 	}
 }
@@ -149,7 +148,8 @@ func (t Tree) Passes() bool {
 	}
 	for _, node := range t.Nodes {
 		if node.Data == "[Pass()]" {
-			return true
+			passedNodes++
+			continue
 		}
 		if node.Passes() {
 			passedNodes++
