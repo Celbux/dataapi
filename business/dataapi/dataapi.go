@@ -74,6 +74,10 @@ func (d DataAPIService) AssertEquals(params string) error {
 		return err
 	}
 
+	// Remove all "\"
+	val1 = strings.Replace(val1, "\\", "", -1)
+	val2 = strings.Replace(val2, "\\", "", -1)
+
 	// Perform the check
 	if val1 != val2 {
 		return errors.Errorf("Expected %v but got %v", val2, val1)
@@ -578,7 +582,7 @@ func (d DataAPIService) For(params string) interface{} {
 
 }
 
-// getExpressions retrieves all expressions nested on the same scope level
+// GetExpressions retrieves all expressions nested on the same scope level
 // This is equivalent to splitting each line of code like java does with semi colons
 // Eg: 	expressions([Set(i,1,int)][Set(i,[GetSomeVar()],i,int)][Set(j,3,string)])
 // Will split into: [Set(i,1,int)]	[Set(i,[GetSomeVar()],i,int)]	[Set(j,3,string)]
@@ -935,6 +939,9 @@ func (d DataAPIService) Post(params string) interface{} {
 		return err
 	}
 	d.EvalCache["res"] = response
+	if string(resp) == "" {
+		d.EvalCache["res"] = []string{"success"}
+	}
 
 	// Return success
 	return nil
